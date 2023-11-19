@@ -1,0 +1,289 @@
+---
+title: "NYPD Shooting Incident Data Report"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Dataset Description 
+
+List of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year.
+
+This is a breakdown of every shooting incident that occurred in NYC going back to 2006 through the end of the previous calendar year. This data is manually extracted every quarter and reviewed by the Office of Management Analysis and Planning before being posted on the NYPD website. Each record represents a shooting incident in NYC and includes information about the event, the location and time of occurrence. In addition, information related to suspect and victim demographics is also included. This data can be used by the public to explore the nature of shooting/criminal activity.
+
+(Please refer to <https://catalog.data.gov/dataset/nypd-shooting-incident-data-historic> for additional information about this dataset.)
+
+## Step 0: Import Packages
+
+```{r import_package, message = FALSE}
+library(tidyverse)
+library(scales)
+```
+
+## Step 1: Import the Data
+
+- Copy the link address of the csv file and read in the data.
+
+```{r import_data, message = FALSE}
+data = read_csv("https://data.cityofnewyork.us/api/views/833y-fsy8/rows.csv?accessType=DOWNLOAD")
+```
+```{r head_data}
+head(data)
+```
+
+## Step 2: Tidy and Transform the Data
+
+### **1. Remove the columns not needed**
+  - The high-NA-ratio columns: **LOC_OF_OCCUR_DESC** (94%), **LOC_CLASSFCTN_DESC** (94%) and **LOCATION_DESC** (55%).
+  
+  - The not important columns: **JURISDICTION_CODE**, **X_COORD_CD**, **Y_COORD_CD**, **Latitude**, **Longitude**, and **Lon_Lat**.
+
+```{r get_na_ratio_data}
+# Get the percentage of NA of each column
+na_count = colSums(is.na(data))
+data_count = nrow(data)
+na_ratio = percent(na_count/data_count)
+```
+```{r print_na_ratio_data, echo = FALSE}
+na_ratio
+```
+```{r remove_not_needed_data}
+# Remove the high-NA-ratio and the not important columns
+data_tidy = data %>%
+  select(-c(LOC_OF_OCCUR_DESC, LOC_CLASSFCTN_DESC, LOCATION_DESC, JURISDICTION_CODE, 
+            X_COORD_CD, Y_COORD_CD, Latitude, Longitude, Lon_Lat))
+```
+
+### **2. Handle missing data for important columns**
+  - Replace NA values with "UNKNOWN" in these columns: **PERP_AGE_GROUP** (34%), **PERP_SEX** (34%) and **PERP_RACE** (34%).
+  
+```{r replace_NA_data}
+data_tidy = data_tidy %>%
+  replace_na(list(PERP_AGE_GROUP = "UNKNOWN", PERP_SEX = "UNKNOWN", PERP_RACE = "UNKNOWN"))
+```
+
+### **3. Decide labels of factor**
+  - Print the labels of factor. (Apply `table()` to each column.)
+  
+  - Decide the labels of factor.
+
+For column **PRECINCT**:
+
+```{r decide_labels_PRECINCT, results = 'hide'}
+# Print the labels of column PRECINCT
+table(data_tidy$PRECINCT)
+
+# Most of the labels are distinct
+# Remove column PRECINCT 
+data_tidy = data_tidy %>%
+  select(-PRECINCT)
+```
+
+For column **PERP_AGE_GROUP**:
+
+```{r decide_labels_PERP_AGE_GROUP, results = 'hide'}
+# Print the labels of column PERP_AGE_GROUP
+table(data_tidy$PERP_AGE_GROUP)
+
+# Remove typos and rename "(null)" to "UNKNOWN"
+data_tidy = data_tidy %>% filter(PERP_AGE_GROUP != "1020" & PERP_AGE_GROUP != "224" & 
+                                 PERP_AGE_GROUP != "940")
+data_tidy$PERP_AGE_GROUP = recode(data_tidy$PERP_AGE_GROUP, "(null)" = "UNKNOWN")
+```
+
+For column **PERP_SEX**:
+
+```{r decide_labels_PERP_SEX, results = 'hide'}
+# Print the labels of column PERP_SEX
+table(data_tidy$PERP_SEX)
+
+# Rename "U" and "(null)" to "UNKNOWN"
+data_tidy$PERP_SEX = recode(data_tidy$PERP_SEX, "U" = "UNKNOWN", "(null)" = "UNKNOWN")
+```
+
+For column **PERP_RACE**:
+
+```{r decide_labels_PERP_RACE, results = 'hide'}
+# Print the labels of column PERP_RACE
+table(data_tidy$PERP_RACE)
+
+# Rename "(null)" to "UNKNOWN"
+data_tidy$PERP_RACE = recode(data_tidy$PERP_RACE, "(null)" = "UNKNOWN")
+```
+
+For column **VIC_AGE_GROUP**:
+
+```{r decide_labels_VIC_AGE_GROUP, results = 'hide'}
+# Print the labels of column VIC_AGE_GROUP
+table(data_tidy$VIC_AGE_GROUP)
+
+# Remove the typo.
+data_tidy = data_tidy %>% filter(VIC_AGE_GROUP != "1022")
+```
+
+For column **VIC_SEX**:
+
+```{r decide_labels_VIC_SEX, results = 'hide'}
+# Print the labels of column VIC_SEX
+table(data_tidy$VIC_SEX)
+
+# Rename "U" to "UNKNOWN"
+data_tidy$VIC_SEX = recode(data_tidy$VIC_SEX, "U" = "UNKNOWN")
+```
+
+For column **VIC_RACE**:
+
+```{r decide_labels_VIC_RACE, results = 'hide'}
+# Print the labels of column VIC_RACE
+table(data_tidy$VIC_RACE)
+
+# Don't need to change
+```
+
+### **4. Factoring the dataframe**
+  - Apply `as.factor()` to each column.
+
+```{r change_to_factor}
+# For column INCIDENT_KEY, apply `as.character()` instead of `as.factor()`
+data_tidy$INCIDENT_KEY = as.character(data_tidy$INCIDENT_KEY)
+data_tidy$BORO = as.factor(data_tidy$BORO)
+data_tidy$PERP_AGE_GROUP = as.factor(data_tidy$PERP_AGE_GROUP)
+data_tidy$PERP_SEX = as.factor(data_tidy$PERP_SEX)
+data_tidy$PERP_RACE = as.factor(data_tidy$PERP_RACE)
+data_tidy$VIC_AGE_GROUP = as.factor(data_tidy$VIC_AGE_GROUP)
+data_tidy$VIC_SEX = as.factor(data_tidy$VIC_SEX)
+data_tidy$VIC_RACE = as.factor(data_tidy$VIC_RACE)
+```
+```{r summary_data_tidy}
+summary(data_tidy)
+```
+
+## Step 3: Add Visualizations and Analysis
+
+### Question 1: How is the distribution of incidents across different boroughs?
+
+- The borough with the highest number of incidents is **BROOKLYN**, followed by **BRONX** and **QUEENS**.
+
+```{r ggplot_1}
+# Create a bar chart
+ggplot_1 = ggplot(data_tidy, aes(x = BORO)) +
+  geom_bar() +
+  labs(title = "Number of Incidents in Different Boroughs", x = "BORO", y = "Number of Incidents") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 12000), breaks = seq(0, 12000, by = 1000))
+ggplot_1
+```
+
+### Question 2: How is the distribution of incidents across different hours?
+
+- The number of incidents is below average after **5:00** and above average after **17:00**.
+
+- The most incidents occurred between **23:00** and **00:00**.
+
+```{r ggplot_2}
+# Get the Hour part from OCCUR_TIME
+data_tidy$OCCUR_HOUR = hour(data_tidy$OCCUR_TIME)
+
+# Create a line chart
+ggplot_2 = ggplot(data_tidy, aes(x = OCCUR_HOUR)) +
+  geom_point(stat = "count") +
+  geom_line(stat = "count") +
+  labs(title = "Number of Incidents in Different Hours", x = "HOUR", y = "Number of Incidents") +
+  theme_minimal() +
+  scale_y_continuous(limits = c(0, 2500), breaks = seq(0, 3000, by = 500)) +
+  geom_hline(yintercept = mean(table(data_tidy$OCCUR_HOUR)), color = "red", linetype = "dashed") +
+  annotate("text", x = 0, y = 1200, label = "Mean", hjust = -0.2, color = "red")
+ggplot_2
+```
+
+### Question 3: How is the distribution of incidents involving different races?
+
+- PERP_RACE: excluding UNKNOWN, the largest proportion is **BLACK**, followed by **WHITE HISPANIC** and **BLACK HISPANIC**.
+
+- VIC_RACE: same as PERP_RACE, the largest proportion is **BLACK**, followed by **WHITE HISPANIC** and **BLACK HISPANIC**.
+
+```{r ggplot_3}
+# Convert data table to data frame
+data_PERP_RACE = as.data.frame(table(data_tidy$PERP_RACE))
+colnames(data_PERP_RACE) = c("Category", "Count")
+
+# Calculate percentage
+data_PERP_RACE$Percentage = (data_PERP_RACE$Count / sum(data_PERP_RACE$Count)) * 100
+
+# Create a pie chart
+ggplot_3 = ggplot(data_PERP_RACE, aes(x = 1, y = Percentage, fill = Category)) +
+  geom_bar(stat = "identity") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(title = "PERP_RACE") +
+  geom_text(aes(label = ifelse(Percentage > 1, paste0(round(Percentage, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5)) 
+  ggplot_3
+```  
+
+```{r ggplot_4}
+# Convert data table to data frame
+data_VIC_RACE = as.data.frame(table(data_tidy$VIC_RACE))
+colnames(data_VIC_RACE) = c("Category", "Count")
+
+# Calculate percentage
+data_VIC_RACE$Percentage = (data_VIC_RACE$Count / sum(data_VIC_RACE$Count)) * 100
+
+# Create a pie chart
+ggplot_4 = ggplot(data_VIC_RACE, aes(x = 1, y = Percentage, fill = Category)) +
+  geom_bar(stat = "identity") +
+  coord_polar(theta = "y") +
+  theme_void() +
+  labs(title = "VIC_RACE") +
+  geom_text(aes(label = ifelse(Percentage > 1, paste0(round(Percentage, 1), "%"), "")), 
+            position = position_stack(vjust = 0.5)) 
+  ggplot_4
+```
+
+### Question 4: What is the correlation between STATISTICAL_MURDER_FLAG and other features?
+
+- **Purpose**: Predict the probability of a murder case based on the following variables (OCCUR_DAY, OCCUR_HOUR, BORO, PERP_AGE_GROUP, PERP_SEX, PERP_RACE, VIC_AGE_GROUP, VIC_SEX, and VIC_RACE).
+
+- **Methods**: Use a logistic regression model to evaluate feature importance.
+  - Use `glm()` to build a logistic regression model.
+  - Use `summary()` to view the coefficients of each feature.
+  
+- **Results**: 
+  - Statistical significance: **BOROMAHATTAN**, **PERP_AGE_GROUP** (25-44, 45-64, 65+, UNKNOWN), **PERP_SEXUNKNOWN**, and **VIC_AGE_GROUP** (18-24, 25-44, 45-64, 65+) have a statistically significant impact on predicting **STATISTICAL_MURDER_FLAG**.
+  
+  - Positive correlation: **PERP_AGE_GROUP** (25-44, 45-64, 65+), and **VIC_AGE_GROUP** (18-24, 25-44, 45-64, 65+).
+  
+  - Negative correlation: **BOROMANHATTAN**, **PERP_AGE_GROUPUNKNOWN**, and **PERP_SEXUNKNOWN**.
+
+```{r model}
+#Convert date to day of week
+data_tidy$OCCUR_DAY = wday(mdy(data_tidy$OCCUR_DATE), label = TRUE)
+
+#Logistic regression model
+model = glm(STATISTICAL_MURDER_FLAG ~ OCCUR_DAY + OCCUR_HOUR + BORO + PERP_AGE_GROUP + 
+            PERP_SEX + PERP_RACE + VIC_AGE_GROUP + VIC_SEX + VIC_RACE, data = data_tidy, 
+            family = "binomial")
+
+summary(model)
+```
+
+## Step 4: Add Bias Identification
+
+**1. Personal bias**
+
+  - **Analyst's subjective bias**: Before looking at the data, I might have thought that there were more female than male victims, but in fact the data shows that both the perpetrators and the victims are more male than female. Beyond that, during the step of tidying data, I treated longitude and latitude as unimportant data and removed them. Maybe they are important data but I didn't analyze them carefully. Ways to mitigate this bias include staying as objective as possible, avoiding personal interpretations of the data, and considering multiple explanations.
+  
+**2. Analysis bias**
+
+  - **Selectivity bias**: Selective selection or reporting of a specific subset of data to support a specific conclusion. Ways to mitigate this bias include openly explaining the selection of data subsets and providing complete analyses.
+  
+  - **Statistical analysis bias**: Incorrect statistical methods can lead to bias. Ways to mitigate this bias include ensuring you use correct statistical methods and interpret statistical results appropriately.
+
+## Conclusion
+
+Overall, factors such as BOROMAHATTAN, PERP_AGE_GROUP (25-44, 45-64, 65+, UNKNOWN), VIC_AGE_GROUP (18-24, 25-44, 45-64, 65+), and PERP_SEXUNKNOWN have statistically significant effects on predicting whether a incident is a murder case. This report analyzes NYPD Shooting Incident Data from 2006 to the recent past, and provides some data visualizations and brief analysis as a reference for future researchers.
